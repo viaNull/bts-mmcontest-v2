@@ -1,0 +1,221 @@
+#!/usr/bin/env ruby
+
+require 'time'
+require 'json'
+require 'bigdecimal'
+
+require_relative 'cb_config'
+
+def get_transaction_stat__24h(filled_orders_dir)
+  $avg_price_24h = {}  # 24h {主流币,bitAssets}/BTS 交易对成交均价
+  $trading_pairs  = {}  # 交易对成交量,  未排除小成交额交易 !!!
+
+  $all_assets.keys.each do |asset_id_1|
+    ## 初始化24小时均价
+    $avg_price_24h[asset_id_1] = {
+        asset_name: $all_assets[asset_id_1][:name],
+        asset_amount: BigDecimal(0),  # should be divided by 10 ** precision
+        bts_amount: BigDecimal(0),    # should be divided by 10 ** precision
+        real_price: BigDecimal::NAN
+    }
+
+    ## 初始化24小时成交量
+    asset_idx_1  = $all_assets[asset_id_1][:idx]
+    asset_type_1 = $all_assets[asset_id_1][:type]
+    asset_name_1 = $all_assets[asset_id_1][:name]
+    $all_assets.keys.each do |asset_id_2|
+      asset_idx_2  = $all_assets[asset_id_2][:idx]
+      asset_type_2 = $all_assets[asset_id_2][:type]
+      asset_name_2 = $all_assets[asset_id_2][:name]
+
+      # 排除同类型资产
+      next if asset_type_1 == asset_type_2 or $trading_pairs[asset_idx_1 | asset_idx_2]
+
+      # 初始化交易对统计信息
+      $trading_pairs[asset_idx_1 | asset_idx_2] = {
+          "#{asset_id_1}" => BigDecimal(0), # 交易量
+          "#{asset_id_2}" => BigDecimal(0), # 交易量
+          :asset_ids      => [asset_id_1, asset_id_2],
+          :asset_names    => [asset_name_1, asset_name_2],
+          :trading_type   => get_trading_type(asset_id_1, asset_id_2),
+          :fees           => {}, # 已除精度
+          :fees_as_bts    => {}, # 已除精度
+          :fees_sum_as_bts=> BigDecimal(0), # 已除精度
+          :reward         => BigDecimal(0), # 已除精度
+          :sells          => [],
+          :buys           => []  # pair: small oid / big oid. sell small one, buy big one
+      }
+    end
+  end
+  $avg_price_24h['1.3.0'][:real_price] = BigDecimal 1
+
+  Dir.foreach(filled_orders_dir) do |file|
+    next if file == '.' or file == '..'
+
+    IO.readlines( File.join(filled_orders_dir, file) ).each do |str|
+      # {
+      #  "id":"2.18.5178",
+      #  "fee":{"amount":364,"asset_id":"1.3.113"},
+      #  "order_id":"1.7.224763961","account_id":"1.2.414074",
+      #  "pays":{"amount":1003602,"asset_id":"1.3.2635"},
+      #  "receives":{"amount":364408,"asset_id":"1.3.113"},
+      #  "fill_price":{"base":{"amount":72620000,"asset_id":"1.3.113"},
+      #  "quote":{"amount":200000000,"asset_id":"1.3.2635"}},
+      #  "is_maker":false
+      # }
+      transaction = JSON.parse(str)
+
+      pays_asset_id = transaction['pays']['asset_id']
+      pays_asset_amount = transaction['pays']['amount'].to_i
+      receives_asset_id = transaction['receives']['asset_id']
+      receives_asset_amount = transaction['receives']['amount'].to_i
+
+      trading_type = get_trading_type(pays_asset_id, receives_asset_id)
+      next if trading_type.nil?
+
+      # 记录24h交易对成交量
+      trading_pair = get_trading_pair(pays_asset_id, receives_asset_id)
+      trading_pair[pays_asset_id] += pays_asset_amount
+      trading_pair[receives_asset_id] += receives_asset_amount
+
+      # 记录 交易对 手续费 贡献:
+      #   - 买方支付购买资产的 市场手续费(若有)， 手续费以购买资产计，后续需转换成BTS
+      fee = transaction['fee']
+      fee_asset_id = fee['asset_id']
+      trading_pair_fees = trading_pair[:fees]
+      if trading_pair_fees[fee_asset_id].nil?
+        trading_pair_fees[fee_asset_id] = BigDecimal(0)
+      end
+      trading_pair_fees[fee_asset_id] += BigDecimal( fee['amount'] ) * $all_assets[fee_asset_id][:mkt_fees_ratio]
+
+      if pays_asset_id == '1.3.3926'
+        puts
+      end
+      # 记录24h成交价数据(maker, taker 金额一致, 因此只需记录maker的数据)
+      if transaction["is_maker"] && (trading_type == :bts_gateway || trading_type == :bts_bit)
+        if pays_asset_id == '1.3.0'
+          $avg_price_24h[receives_asset_id][:bts_amount]   += pays_asset_amount
+          $avg_price_24h[receives_asset_id][:asset_amount] += receives_asset_amount
+        else
+          $avg_price_24h[pays_asset_id][:bts_amount]   += receives_asset_amount
+          $avg_price_24h[pays_asset_id][:asset_amount] += pays_asset_amount
+        end
+      end
+
+    end
+  end
+
+  # 计算24h均价
+  $avg_price_24h.each do |asset_id, stat|
+    if stat[:real_price].nan?
+      stat[:asset_amount] = Rational(stat[:asset_amount], 10 ** $all_assets[asset_id][:precision])
+      stat[:bts_amount]   = Rational(stat[:bts_amount], 10 ** 5)
+      stat[:real_price]   = stat[:bts_amount] / stat[:asset_amount] # per asset
+    end
+
+    ###############
+    if stat[:real_price].nan?
+      asset_name = $all_assets[asset_id][:name]
+      STDERR.puts "failed to get avg price, set price to 0, #{asset_id},  pair <#{asset_name} / BTS> "
+      # todo remove me
+      stat[:real_price] = 0
+    end
+    ###############
+  end
+
+  puts '=' * 30
+  printf "%-15s%10s\n" % %w[Asset AvgPrice(BTS)]
+  $avg_price_24h.each do |asset_id, stat|
+    printf "%-15s%10.5f\n" % [$all_assets[asset_id][:name], stat[:real_price]]
+  end
+  puts '=' * 30
+
+  # transform to **real** volume
+  $trading_pairs.each do |_, trading_pair|
+    asset_id_1 = trading_pair[:asset_ids][0]
+    asset_id_2 = trading_pair[:asset_ids][1]
+    asset_1_precision = $all_assets[asset_id_1][:precision]
+    asset_2_precision = $all_assets[asset_id_2][:precision]
+
+    # 成交量
+    trading_pair[asset_id_1] = Rational(trading_pair[asset_id_1], 10 ** asset_1_precision)
+    trading_pair[asset_id_2] = Rational(trading_pair[asset_id_2], 10 ** asset_2_precision)
+
+    # 市场手续费
+    trading_pair[:fees].keys.each do |fee_asset_id|
+      fee_asset_precision = $all_assets[fee_asset_id][:precision]
+      fee_real_amount = Rational(trading_pair[:fees][fee_asset_id], 10 ** fee_asset_precision)
+      fee_asset_price = $avg_price_24h[fee_asset_id][:real_price]
+      fee_as_bts      = fee_real_amount * fee_asset_price
+
+      trading_pair[:fees][fee_asset_id] = fee_real_amount
+      trading_pair[:fees_as_bts][fee_asset_id] = fee_as_bts
+      trading_pair[:fees_sum_as_bts] += fee_as_bts
+    end
+    
+  end
+
+  ## 计算交易对封顶奖励
+  trading_group_reward_sum = {
+      :bts_gateway => BigDecimal(0),
+      :bts_bit     => BigDecimal(0),
+      :gateway_bit => BigDecimal(0)
+  }
+  $trading_pairs.each do |_, trading_pair|
+    trading_type = trading_pair[:trading_type]
+    trading_group_config = $tp_reward_config[trading_type]
+    trading_pair_config  = trading_group_config[:pair_config]
+
+    # 交易对最小成交量(以BTS计)，低于阈值的不计算奖励
+    min_trading_vol = trading_pair_config[:min_trading_vol]
+
+    case trading_type
+    when :gateway_bit
+      # 网关资产 / 智能资产
+      # 兑换成BTS计算，取成交量的最大值。todo: double confirm
+      asset_id_1 = trading_pair[:asset_ids][0]
+      asset_id_2 = trading_pair[:asset_ids][1]
+
+      asset_1_amount_as_bts = trading_pair[asset_id_1] * $avg_price_24h[asset_id_1][:real_price]
+      asset_2_amount_as_bts = trading_pair[asset_id_2] * $avg_price_24h[asset_id_2][:real_price]
+
+      actual_trading_vol = [asset_1_amount_as_bts, asset_2_amount_as_bts].max
+    else # 与BTS产生的交易对
+      actual_trading_vol = trading_pair['1.3.0']
+    end
+
+    if actual_trading_vol < min_trading_vol
+      STDERR.puts "交易对#{trading_pair[:asset_names]}成交量为 #{actual_trading_vol.to_f} BTS, 低于阈值#{min_trading_vol}, 奖励为0"
+      next
+    end
+
+    reward_by_fees = trading_pair[:fees_sum_as_bts] * trading_pair_config[:fee_return_ratio]
+    reward_max     = trading_pair_config[:max_reward]
+    reward         = [reward_by_fees, reward_max].min
+
+    trading_pair[:reward] = reward
+    trading_group_reward_sum[trading_type] += BigDecimal(reward)
+  end
+
+  trading_group_reward_sum.each do |trading_type, reward_sum|
+    group_config = $tp_reward_config[trading_type][:group_config]
+    group_reward = $tp_reward_config[trading_type][:group_reward]
+
+    group_max_reward = group_config[:max_reward]
+    group_base_reward = group_config[:base_reward]
+    if reward_sum >= group_max_reward
+      group_config[:fill_percent] = reward_sum / group_max_reward
+    elsif reward_sum >= group_base_reward
+      group_reward[:fill_percent] = 1
+    else
+      group_reward[:fill_percent] = group_base_reward / reward_sum
+    end
+
+    group_reward[:sum] = reward_sum
+  end
+end
+
+if __FILE__ == $0
+  get_transaction_stat__24h(File.join( Dir.getwd, 'test/filled_orders/' ))
+  p $avg_price_24h
+end
