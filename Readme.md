@@ -12,3 +12,7 @@ Bitshares MarketMaking Contest script for  https://bitsharestalk.org/index.php?t
 ## Author
 
 [ChenBin](!https://github.com/Chen188)
+
+## Related
+
+This Project built from [bts-mmcontest-scripts](https://github.com/abitmore/bts-mmcontest-scripts) by [Abit](https://github.com/abitmore)
