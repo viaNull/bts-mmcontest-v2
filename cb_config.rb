@@ -68,23 +68,24 @@ $core_asset = {
 }
 
 # 网关发行资产
+# mkt_fees_donate_ratio: 网关需要将此比例的手续费上缴
 $gateway_assets = {
-    "1.3.2241" => { :coin => :BTC, :name => "GDEX.BTC", :precision => 8, :type => 0x2, :mkt_fees_ratio => 0.8 },
-    "1.3.3926" => { :coin => :BTC, :name => "RUDEX.BTC", :precision => 8, :type => 0x2, :mkt_fees_ratio => 0.8 },
-    "1.3.4157" => { :coin => :BTC, :name => "XBTSX.BTC", :precision => 8, :type => 0x2, :mkt_fees_ratio => 0.8 },
-    "1.3.4198" => { :coin => :BTC, :name => "SPARKDEX.BTC", :precision => 7, :type => 0x2, :mkt_fees_ratio => 0.8 },
+    "1.3.2241" => { :coin => :BTC, :name => "GDEX.BTC", :precision => 8, :type => 0x2, :mkt_fees_donate_ratio => 0.2, :mkt_fees_ratio => 0.2 },
+    # "1.3.3926" => { :coin => :BTC, :name => "RUDEX.BTC", :precision => 8, :type => 0x2, :mkt_fees_donate_ratio => 0.2, :mkt_fees_ratio => 0.8 },
+    # "1.3.4157" => { :coin => :BTC, :name => "XBTSX.BTC", :precision => 8, :type => 0x2, :mkt_fees_donate_ratio => 0.2, :mkt_fees_ratio => 0.8 },
+    # "1.3.4198" => { :coin => :BTC, :name => "SPARKDEX.BTC", :precision => 7, :type => 0x2, :mkt_fees_donate_ratio => 0.2, :mkt_fees_ratio => 0.8 },
     #
-    "1.3.5286" => { :coin => :USDT, :name => "GDEX.USDT", :precision => 7, :type => 0x2, :mkt_fees_ratio => 0.8 },
-    "1.3.5542" => { :coin => :USDT, :name => "RUDEX.USDT", :precision => 6, :type => 0x2, :mkt_fees_ratio => 0.8 },
-    "1.3.5589" => { :coin => :USDT, :name => "XBTSX.USDT", :precision => 6, :type => 0x2, :mkt_fees_ratio => 0.8 },
+    "1.3.5286" => { :coin => :USDT, :name => "GDEX.USDT", :precision => 7, :type => 0x2, :mkt_fees_donate_ratio => 0.2, :mkt_fees_ratio => 0.2 },
+    # "1.3.5542" => { :coin => :USDT, :name => "RUDEX.USDT", :precision => 6, :type => 0x2, :mkt_fees_donate_ratio => 0.2, :mkt_fees_ratio => 0.8 },
+    # "1.3.5589" => { :coin => :USDT, :name => "XBTSX.USDT", :precision => 6, :type => 0x2, :mkt_fees_donate_ratio => 0.2, :mkt_fees_ratio => 0.8 },
     #
-    "1.3.2598" => { :coin => :ETH, :name => "GDEX.ETH", :precision => 6, :type => 0x2, :mkt_fees_ratio => 0.8 },
-    "1.3.3715" => { :coin => :ETH, :name => "RUDEX.ETH", :precision => 7, :type => 0x2, :mkt_fees_ratio => 0.8 },
-    "1.3.4199" => { :coin => :ETH, :name => "SPARKDEX.ETH", :precision => 6, :type => 0x2, :mkt_fees_ratio => 0.8 },
-    "1.3.4760" => { :coin => :ETH, :name => "XBTSX.ETH", :precision => 7, :type => 0x2, :mkt_fees_ratio => 0.8 },
-    #
-    "1.3.2635" => { :coin => :EOS, :name => "GDEX.EOS", :precision => 6, :type => 0x2, :mkt_fees_ratio => 0.8 },
-    "1.3.4106" => { :coin => :EOS, :name => "RUDEX.EOS", :precision => 4, :type => 0x2, :mkt_fees_ratio => 0.8 },
+    "1.3.2598" => { :coin => :ETH, :name => "GDEX.ETH", :precision => 6, :type => 0x2, :mkt_fees_donate_ratio => 0.2, :mkt_fees_ratio => 0.2 },
+    # "1.3.3715" => { :coin => :ETH, :name => "RUDEX.ETH", :precision => 7, :type => 0x2, :mkt_fees_donate_ratio => 0.2, :mkt_fees_ratio => 0.8 },
+    # "1.3.4199" => { :coin => :ETH, :name => "SPARKDEX.ETH", :precision => 6, :type => 0x2, :mkt_fees_donate_ratio => 0.2, :mkt_fees_ratio => 0.8 },
+    # "1.3.4760" => { :coin => :ETH, :name => "XBTSX.ETH", :precision => 7, :type => 0x2, :mkt_fees_donate_ratio => 0.2, :mkt_fees_ratio => 0.8 },
+    # #
+    "1.3.2635" => { :coin => :EOS, :name => "GDEX.EOS", :precision => 6, :type => 0x2, :mkt_fees_donate_ratio => 0.2, :mkt_fees_ratio => 0.2 },
+    # "1.3.4106" => { :coin => :EOS, :name => "RUDEX.EOS", :precision => 4, :type => 0x2, :mkt_fees_donate_ratio => 0.2, :mkt_fees_ratio => 0.8 },
 }
 
 # 智能资产
@@ -153,5 +154,3 @@ def distance_to_group( distance )
   return 6 if distance <= $group_bounds[6]
   return 7
 end
-
-# $coins = [ :BTC, :USDT, :ETH, :EOS ]

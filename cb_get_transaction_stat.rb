@@ -88,9 +88,6 @@ def get_transaction_stat__24h(filled_orders_dir)
       end
       trading_pair_fees[fee_asset_id] += BigDecimal( fee['amount'] ) * $all_assets[fee_asset_id][:mkt_fees_ratio]
 
-      if pays_asset_id == '1.3.3926'
-        puts
-      end
       # 记录24h成交价数据(maker, taker 金额一致, 因此只需记录maker的数据)
       if transaction["is_maker"] && (trading_type == :bts_gateway || trading_type == :bts_bit)
         if pays_asset_id == '1.3.0'
@@ -116,19 +113,20 @@ def get_transaction_stat__24h(filled_orders_dir)
     ###############
     if stat[:real_price].nan?
       asset_name = $all_assets[asset_id][:name]
-      STDERR.puts "failed to get avg price, set price to 0, #{asset_id},  pair <#{asset_name} / BTS> "
-      # todo remove me
+      STDERR.puts "未找到<#{asset_name} / BTS>成交记录，设置资产 #{asset_id} 价格为 0 BTS。"
+      # todo 未找到成交记录的资产 相互之间的交易对非法(因为无法衡量实际的BTS深度)
       stat[:real_price] = 0
     end
     ###############
   end
 
-  puts '=' * 30
-  printf "%-15s%10s\n" % %w[Asset AvgPrice(BTS)]
+  puts '=' * 40
+  puts "Asset Avg(24h) Price"
+  printf "%-15s%25s\n" % %w[Asset AvgPrice(BTS)]
   $avg_price_24h.each do |asset_id, stat|
-    printf "%-15s%10.5f\n" % [$all_assets[asset_id][:name], stat[:real_price]]
+    printf "%-15s%25.5f\n" % [$all_assets[asset_id][:name], stat[:real_price]]
   end
-  puts '=' * 30
+  puts '=' * 40
 
   # transform to **real** volume
   $trading_pairs.each do |_, trading_pair|
@@ -152,8 +150,26 @@ def get_transaction_stat__24h(filled_orders_dir)
       trading_pair[:fees_as_bts][fee_asset_id] = fee_as_bts
       trading_pair[:fees_sum_as_bts] += fee_as_bts
     end
-    
+
   end
+
+  puts "Gateway Donates Market Fees"
+  printf "%-10s%15s%15s\n" % %w[Asset Amount DonateRatio]
+  $trading_pairs.each do |_, trading_pair|
+    if trading_pair[:fees_sum_as_bts] <= 0
+      next
+    end
+    trading_pair[:fees].each do |asset_id, fee|
+      if $all_assets[asset_id][:type] == 0x2 # gateway asset
+        asset_name = $all_assets[asset_id][:name]
+        asset_precision = $all_assets[asset_id][:precision]
+        donate_ratio = $gateway_assets[asset_id][:mkt_fees_donate_ratio]
+        real_fee   = fee.to_f * donate_ratio / $all_assets[asset_id][:mkt_fees_ratio]
+        printf "%-10s%15.#{asset_precision}f%15.2f\n" % [asset_name, real_fee, donate_ratio]
+      end
+    end
+  end
+  puts "=" * 40
 
   ## 计算交易对封顶奖励
   trading_group_reward_sum = {
@@ -185,7 +201,7 @@ def get_transaction_stat__24h(filled_orders_dir)
     end
 
     if actual_trading_vol < min_trading_vol
-      STDERR.puts "交易对#{trading_pair[:asset_names]}成交量为 #{actual_trading_vol.to_f} BTS, 低于阈值#{min_trading_vol}, 奖励为0"
+      # STDERR.puts "交易对#{trading_pair[:asset_names]}成交量为 #{actual_trading_vol.to_f} BTS, 低于阈值#{min_trading_vol}, 奖励为0"
       next
     end
 
