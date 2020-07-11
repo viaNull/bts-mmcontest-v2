@@ -2,7 +2,7 @@
 
 require 'time'
 require 'json'
-require 'bigdecimal'
+# require 'bigdecimal'
 
 require_relative 'cb_config'
 
@@ -14,9 +14,9 @@ def get_transaction_stat__24h(filled_orders_dir)
     ## 初始化24小时均价
     $avg_price_24h[asset_id_1] = {
         asset_name: $all_assets[asset_id_1][:name],
-        asset_amount: BigDecimal(0),  # should be divided by 10 ** precision
-        bts_amount: BigDecimal(0),    # should be divided by 10 ** precision
-        real_price: BigDecimal::NAN
+        asset_amount: 0r,  # should be divided by 10 ** precision
+        bts_amount: 0r,    # should be divided by 10 ** precision
+        real_price: -1r
     }
 
     ## 初始化24小时成交量
@@ -33,21 +33,21 @@ def get_transaction_stat__24h(filled_orders_dir)
 
       # 初始化交易对统计信息
       $trading_pairs[asset_idx_1 | asset_idx_2] = {
-          "#{asset_id_1}" => BigDecimal(0), # 交易量
-          "#{asset_id_2}" => BigDecimal(0), # 交易量
+          "#{asset_id_1}" => 0r, # 交易量
+          "#{asset_id_2}" => 0r, # 交易量
           :asset_ids      => [asset_id_1, asset_id_2],
           :asset_names    => [asset_name_1, asset_name_2],
           :trading_type   => get_trading_type(asset_id_1, asset_id_2),
           :fees           => {}, # 已除精度
           :fees_as_bts    => {}, # 已除精度
-          :fees_sum_as_bts=> BigDecimal(0), # 已除精度
-          :reward         => BigDecimal(0), # 已除精度
+          :fees_sum_as_bts=> 0r, # 已除精度
+          :reward         => 0r, # 已除精度
           :sells          => [],
           :buys           => []  # pair: small oid / big oid. sell small one, buy big one
       }
     end
   end
-  $avg_price_24h['1.3.0'][:real_price] = BigDecimal 1
+  $avg_price_24h['1.3.0'][:real_price] = 1r
 
   Dir.foreach(filled_orders_dir) do |file|
     next if file == '.' or file == '..'
@@ -84,9 +84,9 @@ def get_transaction_stat__24h(filled_orders_dir)
       fee_asset_id = fee['asset_id']
       trading_pair_fees = trading_pair[:fees]
       if trading_pair_fees[fee_asset_id].nil?
-        trading_pair_fees[fee_asset_id] = BigDecimal(0)
+        trading_pair_fees[fee_asset_id] = 0r
       end
-      trading_pair_fees[fee_asset_id] += BigDecimal( fee['amount'] ) * $all_assets[fee_asset_id][:mkt_fees_ratio]
+      trading_pair_fees[fee_asset_id] += fee['amount'].to_i.to_r * $all_assets[fee_asset_id][:mkt_fees_ratio]
 
       # 记录24h成交价数据(maker, taker 金额一致, 因此只需记录maker的数据)
       if transaction["is_maker"] && (trading_type == :bts_gateway || trading_type == :bts_bit)
@@ -104,29 +104,29 @@ def get_transaction_stat__24h(filled_orders_dir)
 
   # 计算24h均价
   $avg_price_24h.each do |asset_id, stat|
-    if stat[:real_price].nan?
+    if stat[:real_price] == -1
       stat[:asset_amount] = Rational(stat[:asset_amount], 10 ** $all_assets[asset_id][:precision])
       stat[:bts_amount]   = Rational(stat[:bts_amount], 10 ** 5)
       stat[:real_price]   = stat[:bts_amount] / stat[:asset_amount] # per asset
     end
 
     ###############
-    if stat[:real_price].nan?
+    if stat[:real_price] == -1
       asset_name = $all_assets[asset_id][:name]
       STDERR.puts "未找到<#{asset_name} / BTS>成交记录，设置资产 #{asset_id} 价格为 0 BTS。"
       # todo 未找到成交记录的资产 相互之间的交易对非法(因为无法衡量实际的BTS深度)
-      stat[:real_price] = 0
+      stat[:real_price] = 0r
     end
     ###############
   end
 
-  puts '=' * 40
+  puts '=' * 45
   puts "Asset Avg(24h) Price"
-  printf "%-15s%25s\n" % %w[Asset AvgPrice(BTS)]
+  printf "%-20s%25s\n" % %w[Asset AvgPrice(BTS)]
   $avg_price_24h.each do |asset_id, stat|
-    printf "%-15s%25.5f\n" % [$all_assets[asset_id][:name], stat[:real_price]]
+    printf "%-20s%25.5f\n" % [$all_assets[asset_id][:name], stat[:real_price]]
   end
-  puts '=' * 40
+  puts '=' * 45
 
   # transform to **real** volume
   $trading_pairs.each do |_, trading_pair|
@@ -154,7 +154,7 @@ def get_transaction_stat__24h(filled_orders_dir)
   end
 
   puts "Gateway Donates Market Fees"
-  printf "%-10s%15s%15s\n" % %w[Asset Amount DonateRatio]
+  printf "%-10s%20s%15s\n" % %w[Asset DonateAmount DonateRatio]
   $trading_pairs.each do |_, trading_pair|
     if trading_pair[:fees_sum_as_bts] <= 0
       next
@@ -165,17 +165,44 @@ def get_transaction_stat__24h(filled_orders_dir)
         asset_precision = $all_assets[asset_id][:precision]
         donate_ratio = $gateway_assets[asset_id][:mkt_fees_donate_ratio]
         real_fee   = fee.to_f * donate_ratio / $all_assets[asset_id][:mkt_fees_ratio]
-        printf "%-10s%15.#{asset_precision}f%15.2f\n" % [asset_name, real_fee, donate_ratio]
+        printf "%-10s%20.#{asset_precision}f%15.2f\n" % [asset_name, real_fee, donate_ratio]
       end
     end
   end
-  puts "=" * 40
+  puts "=" * 45
+
+  puts "Trading Pair Market Fees"
+  printf "%-15s%25s%25s%15s%15s%15s\n" % ['TradingPair', 'Fee1'.center(25), 'Fee2'.center(25), 'Fee1AsBTS', 'Fee2AsBTS', 'FeesSumAsBTS']
+  $trading_pairs.each do |_, trading_pair|
+    if trading_pair[:fees_sum_as_bts] <= 0
+      next
+    end
+    fee_asset_id_1 = trading_pair[:asset_ids][0]
+    fee_asset_id_2 = trading_pair[:asset_ids][1]
+
+    fee_asset_1 = $all_assets[fee_asset_id_1]
+    fee_asset_2 = $all_assets[fee_asset_id_2]
+
+    fee_value_1 = sprintf("%15.#{fee_asset_1[:precision]}f %-9s", trading_pair[:fees][fee_asset_id_1].to_f, fee_asset_1[:name] )
+    fee_value_2 = sprintf("%15.#{fee_asset_2[:precision]}f %-9s", trading_pair[:fees][fee_asset_id_2].to_f, fee_asset_2[:name] )
+
+    fee_value_as_bts_1 = sprintf("%15.5f", trading_pair[:fees_as_bts][fee_asset_id_1].to_f)
+    fee_value_as_bts_2 = sprintf("%15.5f", trading_pair[:fees_as_bts][fee_asset_id_2].to_f)
+
+    fee_value_sum_as_bts = sprintf("%15.5f", trading_pair[:fees_sum_as_bts].to_f)
+
+    printf "%-15s%25s%25s%15s%15s%15s\n" %
+               [trading_pair[:asset_names].join('/'), fee_value_1, fee_value_2,
+                fee_value_as_bts_1, fee_value_as_bts_2, fee_value_sum_as_bts]
+  end
+  puts "=" * 45
+
 
   ## 计算交易对封顶奖励
   trading_group_reward_sum = {
-      :bts_gateway => BigDecimal(0),
-      :bts_bit     => BigDecimal(0),
-      :gateway_bit => BigDecimal(0)
+      :bts_gateway => 0r,
+      :bts_bit     => 0r,
+      :gateway_bit => 0r
   }
   $trading_pairs.each do |_, trading_pair|
     trading_type = trading_pair[:trading_type]
@@ -210,7 +237,7 @@ def get_transaction_stat__24h(filled_orders_dir)
     reward         = [reward_by_fees, reward_max].min
 
     trading_pair[:reward] = reward
-    trading_group_reward_sum[trading_type] += BigDecimal(reward)
+    trading_group_reward_sum[trading_type] += reward.to_r
   end
 
   trading_group_reward_sum.each do |trading_type, reward_sum|
@@ -220,11 +247,13 @@ def get_transaction_stat__24h(filled_orders_dir)
     group_max_reward = group_config[:max_reward]
     group_base_reward = group_config[:base_reward]
     if reward_sum >= group_max_reward
-      group_config[:fill_percent] = reward_sum / group_max_reward
+      group_config[:fill_percent] = Rational reward_sum, group_max_reward
     elsif reward_sum >= group_base_reward
-      group_reward[:fill_percent] = 1
+      group_reward[:fill_percent] = 1r
+    elsif reward_sum.positive?
+      group_reward[:fill_percent] = Rational group_base_reward, reward_sum
     else
-      group_reward[:fill_percent] = group_base_reward / reward_sum
+      group_reward[:fill_percent] = 0r
     end
 
     group_reward[:sum] = reward_sum

@@ -6,10 +6,11 @@
 
 require 'time'
 require 'json'
-require 'bigdecimal'
+# require 'bigdecimal'
 
 require_relative 'cb_config'
 require_relative 'cb_get_transaction_stat'
+# require_relative 'file_list'
 
 PRINT_BLOCK_RESULT = false
 
@@ -54,11 +55,14 @@ def process_snapshots( snapshot_path )
   end
 
   blocks = 0
+  # files_list = []
   Dir.foreach(snapshot_path) do |file|
+  # $file_list.each do |file|
     next if file == '.' or file == '..'
     blocks += 1
-    # puts blocks if blocks % 100 == 0
-    file = "49345176.snapshot"
+#    puts [Time.now, blocks].join('   ') if blocks % 100 == 0
+
+    # files_list << file
 
     order_books = {}
     valid_trading_pairs.each do |t_p_id, t_p|
@@ -131,9 +135,7 @@ def process_snapshots( snapshot_path )
 
       ## 统计挂单档位
       [:sells, :buys].each do |side|
-        # j = 1
         book[side].each do |order|
-          # j+=1
           order[:distance] = ( order[:price] - opponent_price ).abs / [ opponent_price, order[:price]].max
           order[:group]    = distance_to_group( order[:distance] )
 
@@ -156,11 +158,11 @@ def process_snapshots( snapshot_path )
       puts '=========  挂单  ============'
       puts "---------sells-------------"
       printf "%-15s%15s%15s%8s%25s\n" % %w[asset_amount price distance group weight]
-      order_books[5][:sells].each do |order|
+      order_books[3][:sells].each do |order|
         printf "%-15s%15.10f%15.5f%8i%25.5f\n" % [order[:asset_amount], order[:price].to_f, order[:distance].to_f, order[:group], order[:weight].to_f]
       end
       puts "---------------------------"
-      order_books[5][:buys].each do |order|
+      order_books[3][:buys].each do |order|
         printf "%-15s%15.10f%15.5f%8i%25.5f\n" % [order[:asset_amount], order[:price].to_f, order[:distance].to_f, order[:group], order[:weight].to_f]
       end
       puts "----------buys-------------"
@@ -199,10 +201,11 @@ def process_snapshots( snapshot_path )
         side_daily_trading_group = daily_trading_group_data[t_p_idx][:"#{[side, 'group'].join('_')}"]
         side_order_groups.each do |group, group_stat|
           # group_stat: {asset_amount_as_bts_sum, weight_sum}
-          group_stat[:score] = BigDecimal.new($group_reward_percent[group] * [1, Rational(group_stat[:asset_amount_as_bts_sum], target_depth)].min, 20)
-          if group_stat[:score].infinite?
-            puts
-          end
+          group_stat[:score] = $group_reward_percent[group] * [1, Rational(group_stat[:asset_amount_as_bts_sum], target_depth)].min
+          # group_stat[:score] = BigDecimal $group_reward_percent[group] *
+          #                                     [1, Rational(group_stat[:asset_amount_as_bts_sum], target_depth)].min,
+          #                                 20
+
           if not side_daily_trading_group.has_key? group
             side_daily_trading_group[group] = {:score => group_stat[:score]}
           else
@@ -217,11 +220,11 @@ def process_snapshots( snapshot_path )
       puts '=========  深度  ============'
       puts "---------sells-------------"
       printf "%-15s%8s%25.5s%15.5s\n" % %w[asset_amount group weight score]
-      order_books[5][:sells_group].each do |group, group_stat|
+      order_books[3][:sells_group].each do |group, group_stat|
         printf "%-15s%8i%25.5f%15.5f\n" % [group_stat[:asset_amount], group, group_stat[:weight_sum].to_f, group_stat[:score].to_f]
       end
       puts "---------------------------"
-      order_books[5][:buys_group].each do |group, group_stat|
+      order_books[3][:buys_group].each do |group, group_stat|
         printf "%-15s%8i%25.5f%15.5f\n" % [group_stat[:asset_amount], group, group_stat[:weight_sum].to_f, group_stat[:score].to_f]
       end
       puts "----------buys-------------"
@@ -237,11 +240,12 @@ def process_snapshots( snapshot_path )
 
           group_stat = side_order_groups[order[:group]]
           order[:score] = order[:weight] * group_stat[:score] / group_stat[:weight_sum]
-          if order[:score].infinite?
-            puts
-          end
+          # if order[:score].infinite?
+          #   puts
+          # end
+
           unless side_daily_trader_scores.has_key? order[:trader]
-            side_daily_trader_scores[order[:trader]] = {score: BigDecimal(0), group: order[:group]}
+            side_daily_trader_scores[order[:trader]] = {score: 0r, group: order[:group]}
           end
 
           side_daily_trader_scores[order[:trader]][:score] += order[:score]
@@ -254,11 +258,11 @@ def process_snapshots( snapshot_path )
       puts '======  个人交易评分  ========='
       puts "---------sells-------------"
       printf "%-15s%15.5s\n" % %w[trader score]
-      daily_trader_scores[5][:sells].each do |trader, ts|
+      daily_trader_scores[3][:sells].each do |trader, ts|
         printf "%-15s%15.5f\n" % [trader, ts[:score].to_f]
       end
       puts "---------------------------"
-      daily_trader_scores[5][:buys].each do |trader, ts|
+      daily_trader_scores[3][:buys].each do |trader, ts|
         printf "%-15s%15.5f\n" % [trader, ts[:score].to_f]
       end
       puts "----------buys-------------"
@@ -266,7 +270,7 @@ def process_snapshots( snapshot_path )
     end
   end # end Dir.foreach
 
-  # 计算每个 档位 的奖励，后续对个人的奖励基于此来分配
+  # 计算每个 档位 的奖励
   daily_trading_group_data.each do |t_p_idx, trading_stat|
     trading_type = $trading_pairs[t_p_idx][:trading_type]
     trading_group_config = $tp_reward_config[trading_type][:group_config]
@@ -283,9 +287,31 @@ def process_snapshots( snapshot_path )
       side_groups.each do |_, group|
         # 档位得分 * 交易对实际奖励 * 买卖盘占比 / block数量
         group[:reward] = (group[:score] * trading_pair_real_reward * Rational(side_reward_ratio, ratio_sum) / blocks)#.to_i
+        group[:reward_fulfill_ratio] = group[:score] * Rational(side_reward_ratio, ratio_sum) / blocks
+        # if group[:reward].infinite?
+        #   puts
+        # end
+        # p group[:reward]
       end
     end
   end
+
+  puts
+  puts "=" * 45
+  daily_trading_group_data.each do |t_p_idx, trading_stat|
+    puts "%s / %s markets" % trading_stat[:asset_names]
+    [:sells, :buys].each do |side|
+      printf "--group(%-5s)-------------------------score-\n" % side
+      side_groups = trading_stat[:"#{[side, 'group'].join('_')}"]
+      (1..6).each do |group_idx|
+        side_group = side_groups[group_idx]
+        next unless side_group
+        printf "%-30s%15.5f\n" % [group_idx, side_group[:reward_fulfill_ratio].to_f]
+      end
+    end
+    puts '.' * 45
+  end
+  puts "=" * 45
 
   total_reward = 0
   daily_trader_scores.each do |t_p_idx, trader_score|
@@ -305,38 +331,41 @@ def process_snapshots( snapshot_path )
   end
 
   puts
-  puts "=" * 40
+  puts "============================================="
   puts "Rewards"
   puts "Total %0.5f BTS" % (total_reward.to_f)
   puts
 
   daily_trader_rewards.each do |_, rewards|
-    # next if rewards[:sells].empty?
-
-    puts "=" * 40
+    puts "============================================="
     puts "%s / %s markets" % rewards[:asset_names]
-    puts "--seller-------------------------reward(BTS)-"
-    rewards[:sells].sort_by { |acc, reward| -reward }.each do |acc, reward|
-      next if reward < 0.00001 # skip data < 0.00001 BTS
-      printf "%-30s%15.5f\n" % [acc, reward.to_f]
-    end
-    puts "--buyer--------------------------reward(BTS)-"
-    rewards[:buys].sort_by { |acc, reward| -reward }.each do |acc, reward|
-      next if reward < 0.00001 # skip data < 0.00001 BTS
-      printf "%-30s%15.5f\n" % [acc, reward.to_f]
+    [:sells, :buys].each do |side|
+      next if rewards[side].empty?
+
+      printf "--%-5s-------------------------reward(BTS)-\n" % side
+      trader_counts = 0
+      trading_rewards = 0.0
+      rewards[side].sort_by { |_, reward| -reward }.each do |acc, reward|
+        next if reward < 0.00001 # skip data < 0.00001 BTS
+        trader_counts += 1
+        trading_rewards += reward.to_f
+        printf "%-30s%15.5f\n" % [acc, reward.to_f]
+      end
+      puts '-' * 12 + ' ' * 25 + '-' * 8
+      printf "Traders: %-21d%15.5f\n" % [trader_counts, trading_rewards]
+
     end
   end
 
   transfer = 'add_operation_to_builder_transaction 0 [0,{"from":"1.2.100876","to":"%s","amount":{"amount":"%d","asset_id":"1.3.0"}}]'
 
   puts
-  puts "=" * 40
+  puts "============================================="
   puts "Commands"
   puts
   puts "begin_builder_transaction"
 
   daily_trader_rewards.each do |_, rewards|
-    # next if rewards[:sells].empty?
     [:sells, :buys].each do |side|
       rewards[side].sort_by { |acc, reward| -reward }.each do |acc, reward|
         next if reward < 0.00001 # skip data < 0.00001 BTS
@@ -375,10 +404,10 @@ def check_order(order)
     # gateway / bit 交易对需要判断的是Gateway资产的挂单量
     if asset_base[:type] == 0x2     # gateway asset
       asset_to_judge = asset_base
-      asset_amount = for_sale_amount
+      asset_amount = for_sale_amount.to_r
     else
       asset_to_judge = asset_quota  # bit asset, transform to gateway asset amount
-      asset_amount = for_sale_amount * asset_quota_amount / asset_base_amount
+      asset_amount = for_sale_amount * Rational(asset_quota_amount, asset_base_amount)
     end
 
     min_order_size = min_order_size[asset_to_judge[:coin]] * (10 ** asset_to_judge[:precision])
@@ -390,9 +419,9 @@ def check_order(order)
     if asset_base[:type] == 0x1     # bts asset
       asset_amount = for_sale_amount
     else                            # transform to bts amount
-      asset_amount = for_sale_amount * asset_quota_amount / asset_base_amount
+      asset_amount = for_sale_amount * Rational(asset_quota_amount, asset_base_amount)
     end
-    asset_amount_as_bts = asset_amount / 10 ** 5
+    asset_amount_as_bts = Rational asset_amount.to_i, 10 ** 5
 
     min_order_size = min_order_size * (10 ** 5)
   end
@@ -409,12 +438,11 @@ end
 
 if __FILE__ == $0
   date = ARGV[0] or Time.now.utc.to_s.split(' ')[0]
-  base_dir = './test/' + date
+  base_dir = '/home/ubuntu/bts_delay_node/witness_node_data_dir/ugly-snapshots/2020/' + date
   start_time = Time.now
-  puts "Calc dir #{base_dir}..."
-  get_transaction_stat__24h(File.join base_dir, 'filled_orders/')
-  process_snapshots(File.join base_dir, 'snapshots/')
-
+  puts "Calc dir #{base_dir} ..."
+  get_transaction_stat__24h(File.join base_dir, 'filled_orders')
+  process_snapshots(File.join base_dir, 'snapshots')
   puts "Start time: #{start_time}"
   puts "End time: #{Time.now}. Duration: #{ (Time.now - start_time) / 60 } mins."
 end
