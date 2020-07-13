@@ -247,7 +247,7 @@ def get_transaction_stat__24h(filled_orders_dir)
     group_max_reward = group_config[:max_reward]
     group_base_reward = group_config[:base_reward]
     if reward_sum >= group_max_reward
-      group_config[:fill_percent] = Rational reward_sum, group_max_reward
+      group_reward[:fill_percent] = Rational group_max_reward, reward_sum
     elsif reward_sum >= group_base_reward
       group_reward[:fill_percent] = 1r
     elsif reward_sum.positive?
@@ -261,6 +261,8 @@ def get_transaction_stat__24h(filled_orders_dir)
 end
 
 if __FILE__ == $0
-  get_transaction_stat__24h(File.join( Dir.getwd, 'test/filled_orders/' ))
+  date = ARGV[0] or Time.now.utc.to_s.split(' ')[0]
+  base_dir = '/home/ubuntu/bts_delay_node/witness_node_data_dir/ugly-snapshots/2020/' + date
+  get_transaction_stat__24h(File.join base_dir, 'filled_orders')
   p $avg_price_24h
 end
