@@ -1,5 +1,19 @@
 #!/usr/bin/env ruby
 
+$proposer = "btsai" # propose_builder_transaction2 by $proposer
+
+# burn reward by :ratio * total_rewards to account :to
+$burn_rewards_config = {
+    :ratio => Rational(50, 100),
+    :to    => '1.2.1787282', # committee-burn
+}
+
+# pay worker salary by :ratio * total_rewards to account :to
+$worker_salary_config = {
+    :ratio => Rational(1, 100),
+    :to    => '1.2.168462', # vianull
+}
+
 # trading pair group(type) config
 $tp_reward_config = {
     # BTS／主流币组

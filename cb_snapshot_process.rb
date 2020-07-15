@@ -313,7 +313,7 @@ def process_snapshots( snapshot_path )
   end
   puts "=" * 45
 
-  total_reward = 0
+  total_reward = 0r
   daily_trader_scores.each do |t_p_idx, trader_score|
     [:sells, :buys].each do |side|
       group_data = daily_trading_group_data[t_p_idx][:"#{[side, 'group'].join('_')}"]
@@ -332,7 +332,7 @@ def process_snapshots( snapshot_path )
 
   puts
   puts "============================================="
-  puts "Rewards"
+  puts "Total Rewards"
   puts "Total %0.5f BTS" % (total_reward.to_f)
   puts
 
@@ -365,6 +365,7 @@ def process_snapshots( snapshot_path )
   puts
   puts "begin_builder_transaction"
 
+  # trader rewards
   daily_trader_rewards.each do |_, rewards|
     [:sells, :buys].each do |side|
       rewards[side].sort_by { |acc, reward| -reward }.each do |acc, reward|
@@ -373,6 +374,18 @@ def process_snapshots( snapshot_path )
         puts transfer % [acc, reward_value]
       end
     end
+  end
+
+  # burn
+  burn_amount = (total_reward * 10 ** 5 * $burn_rewards_config[:ratio]).to_i
+  if burn_amount > 0
+    puts transfer % [$burn_rewards_config[:to], burn_amount]
+  end
+
+  # worker salary
+  salary_amount = (total_reward * 10 ** 5 * $worker_salary_config[:ratio]).to_i
+  if salary_amount > 0
+    puts transfer % [$worker_salary_config[:to], salary_amount]
   end
 
   puts 'set_fees_on_builder_transaction 0 1.3.0'
